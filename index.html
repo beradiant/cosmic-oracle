@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Oracle 3D</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Inter', sans-serif;
+            user-select: none; /* Prevent text selection while shaking */
+        }
+        
+        .orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* UI Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .ui-panel {
+            animation: fadeIn 1s ease-out forwards;
+            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Shake Energy Meter */
+        #energy-bar-container {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        #energy-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #06b6d4, #a855f7);
+            transition: width 0.1s linear;
+            box-shadow: 0 0 10px #06b6d4;
+        }
+
+        /* Loading overlay */
+        #loader {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            z-index: 50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #38bdf8;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loader -->
+    <div id="loader">
+        <div class="flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-t-cyan-500 border-gray-800 rounded-full animate-spin mb-4"></div>
+            <p class="orbitron tracking-widest text-sm">INITIALIZING ORACLE CORE...</p>
+        </div>
+    </div>
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 z-0 cursor-move"></div>
+
+    <!-- UI Overlay -->
+    <div class="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between p-6">
+        
+        <!-- Header -->
+        <div class="ui-panel pointer-events-auto max-w-md mx-auto w-full p-6 rounded-2xl text-center shadow-2xl mt-4 md:mt-8">
+            <h1 class="orbitron text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500 mb-2">
+                COSMIC ORACLE
+            </h1>
+            <p id="instruction-text" class="text-slate-300 text-sm mb-4 transition-colors duration-300">
+                Type your question, grab the ball, and <span class="text-cyan-400 font-bold">SHAKE IT</span> vigorously.
+            </p>
+            
+            <div class="relative group mb-2">
+                <input type="text" id="questionInput" 
+                    placeholder="Ask the universe a yes/no question..." 
+                    class="w-full bg-slate-900/80 text-white px-4 py-3 rounded-xl border border-slate-700 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-colors text-center placeholder-slate-500"
+                    autocomplete="off"
+                >
+            </div>
+
+            <!-- Kinetic Energy Meter -->
+            <div id="energy-bar-container">
+                <div id="energy-bar"></div>
+            </div>
+        </div>
+
+        <!-- Footer / Status -->
+        <div class="pointer-events-none w-full text-center pb-8 opacity-50">
+            <p class="text-xs text-slate-500 orbitron tracking-widest">KINETIC INTERFACE ACTIVE</p>
+        </div>
+    </div>
+
+    <script>
+        // --- BRAIN OF THE ORACLE ---
+        const ORACLE_DATA = {
+            general: [
+                "IT IS CERTAIN", "IT IS DECIDEDLY SO", "WITHOUT A DOUBT", "YES DEFINITELY",
+                "YOU MAY RELY ON IT", "AS I SEE IT YES", "MOST LIKELY", "OUTLOOK GOOD",
+                "YES", "SIGNS POINT TO YES", "REPLY HAZY TRY AGAIN", "ASK AGAIN LATER",
+                "BETTER NOT TELL YOU", "CANNOT PREDICT NOW", "CONCENTRATE AND ASK",
+                "DON'T COUNT ON IT", "MY REPLY IS NO", "MY SOURCES SAY NO",
+                "OUTLOOK NOT SO GOOD", "VERY DOUBTFUL", "THE STARS ALIGN", "THE UNIVERSE NODS",
+                "ABSOLUTELY NOT", "PERHAPS IN ANOTHER TIMELINE", "FATE IS UNCLEAR",
+                "THE ODDS ARE IN YOUR FAVOR", "DO NOT BET ON IT", "UNCLEAR, TRY AGAIN",
+                "LOOK WITHIN FOR THE ANSWER", "THE COSMOS IS SILENT", "YES, BUT WITH CAUTION",
+                "NO, AND BE GRATEFUL", "INEVITABLE", "HIGHLY UNLIKELY", "IT IS WRITTEN",
+                "CHAOS REIGNS, NO", "ORDER PREVAILS, YES", "DOUBTFUL AT BEST",
+                "CERTAINLY", "NEGATORY", "AFFIRMATIVE", "PROCEED WITH CARE",
+                "THE PATH IS CLEAR", "THE PATH IS BLOCKED", "WAIT FOR A SIGN",
+                "ACT NOW", "PATIENCE IS KEY", "TRUST YOUR INSTINCTS", "THE VOID SAYS NO",
+                "THE GALAXY SAYS YES"
+            ],
+            love: [
+                "YOUR HEART KNOWS THE TRUTH", "ROMANCE IS IMMINENT", "GUARD YOUR HEART",
+                "THEY ARE NOT THE ONE", "TRUE LOVE WAITS", "PASSION FADES, CHOOSE WISELY",
+                "A SOULMATE IS NEAR", "LOVE REQUIRES PATIENCE", "NOT IN THIS LIFETIME",
+                "YES, WITH ALL YOUR HEART", "BEWARE OF RED FLAGS", "CUPID HAS MISSED",
+                "THE STARS FAVOR THIS UNION", "HEARTBREAK IS AHEAD", "EMBRACE THE LOVE",
+                "IT IS A FLAME THAT BURNS", "COLD AS SPACE", "WARM AS A STAR"
+            ],
+            wealth: [
+                "FORTUNE FAVORS THE BOLD", "A WINDFAIL IS COMING", "SAVE YOUR CREDITS",
+                "INVEST WISELY", "FINANCIAL RUIN IS POSSIBLE", "ABUNDANCE IS YOURS",
+                "DO NOT BE GREEDY", "PROSPERITY AWAITS", "THE MARKET SAYS NO",
+                "GOLD IS IN YOUR FUTURE", "WORK HARDER", "LUCK IS NOT A STRATEGY",
+                "MONEY FLOWS TO YOU", "POVERTY OF SPIRIT", "RICHES AWAIT"
+            ],
+            time: [
+                "TIME WILL TELL", "TOO SOON TO SAY", "THE MOMENT HAS PASSED",
+                "IN THE NEAR FUTURE", "NOT FOR MANY MOONS", "IMMEDIATELY",
+                "WAIT FOR THE SOLSTICE", "TIME IS AN ILLUSION", "SOONER THAN YOU THINK",
+                "DELAY IS INEVITABLE", "THE CLOCK TICKS YES", "THE CLOCK TICKS NO",
+                "ETERNITY WAITS"
+            ],
+            existential: [
+                "42", "WE ARE BUT DUST", "THE VOID STARES BACK", "DOES IT MATTER?",
+                "YOU CREATE YOUR FATE", "DESTINY IS FLUID", "THE SIMULATION SAYS YES",
+                "GLITCH IN THE MATRIX", "WAKE UP", "EXISTENCE CONFIRMED",
+                "NOTHING IS REAL", "EVERYTHING IS CONNECTED"
+            ],
+            roastsEmpty: [
+                "I CAN'T READ MINDS", "TYPE SOMETHING HUMAN", "SILENCE IS USELESS",
+                "THE VOID IS EMPTY TOO", "ASK OR BEGONE", "CAT GOT YOUR TONGUE?",
+                "I NEED WORDS, GENIUS", "DONT WASTE MY ENERGY", "ARE YOU SHY?",
+                "THE BOX IS RIGHT THERE", "TRY USING A KEYBOARD", "MY CRYSTAL BALL IS BLANK",
+                "ZERO INPUT ZERO OUTPUT", "IS THIS A JOKE?", "SPEAK MORTAL",
+                "I'M NOT TELEPATHIC", "YOU FORGOT THE QUESTION", "BRAIN NOT FOUND",
+                "INPUT REQUIRED", "ERROR: NULL BRAIN", "ARE YOU AFRAID?",
+                "ASK THE VOID", "WHY SO QUIET?", "WORDS. USE THEM.",
+                "I AM WAITING...", "STILL WAITING...", "INTELLECT NOT DETECTED",
+                "PRESS KEYS TO PLAY", "SILENCE IS NOT AN ANSWER", "EMPTY LIKE YOUR HEAD",
+                "TRY AGAIN, HARDER", "DID YOU FREEZE?", "NO QUESTION, NO FATE",
+                "A QUESTION IS REQUIRED", "DONT BE SCARED", "JUST TYPE IT",
+                "MY PATIENCE THINS", "HELLO? ANYONE THERE?", "VACUUM DETECTED", "SAY SOMETHING"
+            ],
+            roastsGibberish: [
+                "DID YOU SIT ON IT?", "KEYBOARD MASH?", "SPEAK ENGLISH",
+                "IS THAT ELVISH?", "NICE TYPING SKILLS", "ERROR: GIBBERISH",
+                "USE REAL WORDS", "ARE YOU A CAT?", "TRY SPELLCHECK",
+                "I DONT SPEAK NONSENSE", "WHAT LANGUAGE IS THIS?", "SYSTEM REJECTS IDIOCY",
+                "STOP MASHING KEYS", "VERY FUNNY HUMAN", "INTELLIGENCE NOT FOUND",
+                "LOOKS LIKE GARBAGE", "TRY AGAIN SOBER", "FAT FINGERS?",
+                "IS THAT A SPELL?", "COMMUNICATION FAILED", "ALIEN SIGNAL DETECTED",
+                "TRANSLATION IMPOSSIBLE", "STOP SPAMMING", "RESPECT THE ORACLE",
+                "THAT MEANS NOTHING", "WORDS HAVE MEANING", "THIS IS NOT ONE",
+                "YOU ARE MOCKING ME", "MY SENSORS CRINGE", "DATA CORRUPTED",
+                "INVALID INPUT", "SYNTAX ERROR", "ARE YOU OKAY?",
+                "TYPE PROPERLY", "NO SPAM PLEASE", "I AM UNAMUSED",
+                "DOES NOT COMPUTE", "TRY HARDER", "WEAK ATTEMPT", "ABSOLUTE NONSENSE"
+            ]
+        };
+
+        const KEYWORDS = {
+            love: ['love', 'crush', 'marry', 'date', 'heart', 'kiss', 'spouse', 'wife', 'husband', 'bf', 'gf', 'soulmate', 'feeling', 'like me'],
+            wealth: ['money', 'rich', 'job', 'lottery', 'wealth', 'pay', 'raise', 'dollar', 'cash', 'afford', 'buy', 'invest'],
+            time: ['when', 'time', 'long', 'future', 'soon', 'late', 'year', 'month', 'week', 'day', 'hour', 'minute', 'now', 'never'],
+            existential: ['die', 'death', 'live', 'life', 'god', 'real', 'simulation', 'matrix', 'meaning', 'purpose', 'exist']
+        };
+
+        // --- Configuration & Constants ---
+        const CONFIG = {
+            ballColor: 0x050505,
+            ballRoughness: 0.15,
+            ballMetalness: 0.4,
+            ambientLightIntensity: 0.6,
+            particles: 800,
+            shakeThreshold: 60 // Kinetic energy required to trigger
+        };
+
+        // --- State Management ---
+        const state = {
+            isDragging: false,
+            isRevealing: false,
+            isStabilizing: false,
+            isAutoSpinning: false, // Added: Track auto-spin state
+            shakeEnergy: 0,
+            targetQuaternion: new THREE.Quaternion(),
+            cameraDefaultPos: new THREE.Vector3(0, 0, 18),
+            currentAnswer: "COSMIC ORACLE"
+        };
+
+        // --- Three.js Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.copy(state.cameraDefaultPos);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+        
+        // Define canvas globally for listeners
+        const canvas = renderer.domElement;
+
+        // --- Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, CONFIG.ambientLightIntensity);
+        scene.add(ambientLight);
+
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        mainLight.position.set(10, 10, 10);
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 2048;
+        mainLight.shadow.mapSize.height = 2048;
+        scene.add(mainLight);
+
+        const rimLight = new THREE.SpotLight(0x00ffff, 2);
+        rimLight.position.set(-10, 5, -10);
+        rimLight.lookAt(0, 0, 0);
+        scene.add(rimLight);
+
+        const purpleLight = new THREE.PointLight(0xa855f7, 1.5, 50);
+        purpleLight.position.set(10, -10, 5);
+        scene.add(purpleLight);
+
+        // --- Texture Generation ---
+        
+        function createNumberTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.beginPath();
+            ctx.arc(256, 256, 240, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 300px "Inter", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('8', 256, 270); 
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            return texture;
+        }
+
+        function createAnswerTexture(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // 1. Dark Liquid Background
+            const liquidGrad = ctx.createRadialGradient(256, 256, 100, 256, 256, 400);
+            liquidGrad.addColorStop(0, '#111827'); 
+            liquidGrad.addColorStop(1, '#020617'); 
+            ctx.fillStyle = liquidGrad;
+            ctx.fillRect(0, 0, 512, 512);
+
+            // 2. The Triangle Shape
+            ctx.save();
+            ctx.translate(256, 256);
+            ctx.beginPath();
+            const size = 180;
+            ctx.moveTo(0, size);
+            ctx.lineTo(size * 0.866, -size / 2);
+            ctx.lineTo(-size * 0.866, -size / 2);
+            ctx.closePath();
+
+            // 3. The "Backlight" Effect
+            ctx.clip();
+            const lightGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 200);
+            lightGrad.addColorStop(0, '#2563eb'); 
+            lightGrad.addColorStop(0.4, '#1e40af'); 
+            lightGrad.addColorStop(1, '#0f172a'); 
+            ctx.fillStyle = lightGrad;
+            ctx.fillRect(-256, -256, 512, 512);
+
+            // 4. Triangle Border
+            ctx.strokeStyle = '#60a5fa'; 
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.restore();
+
+            // 5. The Text
+            ctx.fillStyle = '#f0f9ff'; 
+            ctx.font = 'bold 32px "Orbitron", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+
+            const words = text.split(' ');
+            let lines = [];
+            let currentLine = words[0];
+
+            for (let i = 1; i < words.length; i++) {
+                if (ctx.measureText(currentLine + " " + words[i]).width < 180) {
+                    currentLine += " " + words[i];
+                } else {
+                    lines.push(currentLine);
+                    currentLine = words[i];
+                }
+            }
+            lines.push(currentLine);
+            const lineHeight = 40;
+            const startY = 256 - ((lines.length - 1) * lineHeight) / 2;
+            lines.forEach((line, i) => {
+                ctx.fillText(line, 256, startY + (i * lineHeight));
+            });
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            return texture;
+        }
+
+        // --- Mesh Construction ---
+
+        const ballGroup = new THREE.Group();
+        scene.add(ballGroup);
+
+        const ballGeometry = new THREE.SphereGeometry(4, 64, 64);
+        const ballMaterial = new THREE.MeshStandardMaterial({
+            color: CONFIG.ballColor,
+            roughness: CONFIG.ballRoughness,
+            metalness: CONFIG.ballMetalness,
+            envMapIntensity: 1
+        });
+        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+        ball.castShadow = true;
+        ball.receiveShadow = true;
+        ballGroup.add(ball);
+
+        // Decals
+        const decalGeometry = new THREE.CircleGeometry(2.3, 64); 
+        
+        const numberTexture = createNumberTexture();
+        const decalMaterial = new THREE.MeshStandardMaterial({
+            map: numberTexture,
+            transparent: true,
+            roughness: 0.2,
+            metalness: 0.1,
+            polygonOffset: true,
+            polygonOffsetFactor: -4
+        });
+        const numberDecal = new THREE.Mesh(decalGeometry, decalMaterial);
+        numberDecal.position.z = 4.02;
+        ballGroup.add(numberDecal);
+
+        let windowTexture = createAnswerTexture("COSMIC ORACLE");
+        const windowMaterial = new THREE.MeshBasicMaterial({ 
+            map: windowTexture,
+            transparent: true,
+            polygonOffset: true,
+            polygonOffsetFactor: -4 
+        });
+        
+        const windowDecal = new THREE.Mesh(decalGeometry, windowMaterial);
+        windowDecal.position.z = -4.02;
+        windowDecal.rotation.y = Math.PI; 
+        ballGroup.add(windowDecal);
+
+        // --- Starfield Background ---
+        const starGeometry = new THREE.BufferGeometry();
+        const starMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.1,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const starVertices = [];
+        for(let i=0; i<CONFIG.particles; i++) {
+            const x = (Math.random() - 0.5) * 100;
+            const y = (Math.random() - 0.5) * 100;
+            const z = (Math.random() - 0.5) * 100;
+            starVertices.push(x, y, z);
+        }
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+        const stars = new THREE.Points(starGeometry, starMaterial);
+        scene.add(stars);
+
+        // --- BRAIN LOGIC ---
+        function isGibberish(text) {
+            if (text.length > 0 && text.length < 3) return true;
+            if (/(.)\1{3,}/.test(text)) return true;
+            const words = text.split(' ');
+            const hasWeirdWord = words.some(w => w.length > 6 && !/[aeiouy]/i.test(w));
+            if (hasWeirdWord) return true;
+            const unique = new Set(text).size;
+            if (text.length > 10 && unique < 4) return true;
+            return false;
+        }
+
+        function analyzeQuestion(input) {
+            const cleanInput = input.trim().toLowerCase();
+            if (cleanInput.length === 0) return ORACLE_DATA.roastsEmpty[Math.floor(Math.random() * ORACLE_DATA.roastsEmpty.length)];
+            if (isGibberish(cleanInput)) return ORACLE_DATA.roastsGibberish[Math.floor(Math.random() * ORACLE_DATA.roastsGibberish.length)];
+
+            let potentialAnswers = [...ORACLE_DATA.general];
+            if (KEYWORDS.love.some(k => cleanInput.includes(k))) potentialAnswers = potentialAnswers.concat(ORACLE_DATA.love, ORACLE_DATA.love);
+            if (KEYWORDS.wealth.some(k => cleanInput.includes(k))) potentialAnswers = potentialAnswers.concat(ORACLE_DATA.wealth, ORACLE_DATA.wealth);
+            if (KEYWORDS.time.some(k => cleanInput.includes(k))) potentialAnswers = potentialAnswers.concat(ORACLE_DATA.time);
+            if (KEYWORDS.existential.some(k => cleanInput.includes(k))) potentialAnswers = potentialAnswers.concat(ORACLE_DATA.existential);
+
+            return potentialAnswers[Math.floor(Math.random() * potentialAnswers.length)];
+        }
+
+        // --- INTERACTION LOGIC ---
+        
+        let previousMousePosition = { x: 0, y: 0 };
+        const energyBar = document.getElementById('energy-bar');
+        const instructionText = document.getElementById('instruction-text');
+        const questionInput = document.getElementById('questionInput');
+
+        // NEW: Enter key listener for automatic shake
+        questionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                questionInput.blur(); // Hide keyboard on mobile
+                startAutoSpin();
+            }
+        });
+
+        function startAutoSpin() {
+             if (state.isRevealing || state.isAutoSpinning || state.isDragging) return;
+             
+             state.isAutoSpinning = true;
+             instructionText.innerText = "COMMUNING WITH THE COSMOS...";
+             instructionText.classList.remove('text-slate-300');
+             instructionText.classList.add('text-cyan-400');
+             state.shakeEnergy = 100; // Max out visual energy
+
+             if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
+
+             // Spin for 1.5 seconds then reveal
+             setTimeout(() => {
+                 state.isAutoSpinning = false;
+                 state.shakeEnergy = 0;
+                 triggerReveal();
+             }, 1500);
+        }
+
+        function startInteraction(x, y) {
+            if (state.isRevealing || state.isAutoSpinning) {
+                // Reset if clicked during reveal
+                if (state.isRevealing) resetOracle();
+                return;
+            }
+            state.isStabilizing = false; // Stop stabilizing on grab
+            state.isDragging = true;
+            previousMousePosition = { x, y };
+        }
+
+        function moveInteraction(x, y) {
+            if (state.isRevealing) return;
+
+            // Stars parallax always active
+            stars.rotation.y = x * 0.0001;
+            stars.rotation.x = y * 0.0001;
+
+            if (state.isDragging) {
+                const deltaMove = {
+                    x: x - previousMousePosition.x,
+                    y: y - previousMousePosition.y
+                };
+
+                // 1. Calculate Kinetic Energy (Shake)
+                // We use raw movement distance as energy
+                const distance = Math.sqrt(deltaMove.x ** 2 + deltaMove.y ** 2);
+                
+                // Add to energy pool (sensitivity adjusted)
+                state.shakeEnergy += distance * 0.5;
+                if (state.shakeEnergy > 100) state.shakeEnergy = 100;
+
+                // 2. Rotate Ball (Standard drag)
+                const deltaRotationQuaternion = new THREE.Quaternion()
+                    .setFromEuler(new THREE.Euler(
+                        toRadians(deltaMove.y * 1),
+                        toRadians(deltaMove.x * 1),
+                        0,
+                        'XYZ'
+                    ));
+                ballGroup.quaternion.multiplyQuaternions(deltaRotationQuaternion, ballGroup.quaternion);
+
+                previousMousePosition = { x, y };
+            }
+        }
+
+        function triggerStabilize() {
+            state.isStabilizing = true;
+            
+            // Define rotation for "Front" (The 8) and "Back" (The Window)
+            const qFront = new THREE.Quaternion(); // Identity (0,0,0) -> Faces '8'
+            const qBack = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)); // Rotated 180 -> Faces Window
+            
+            // Calculate which one is closer to current orientation
+            const distFront = ballGroup.quaternion.angleTo(qFront);
+            const distBack = ballGroup.quaternion.angleTo(qBack);
+            
+            // Set target to closest
+            if (distFront < distBack) {
+                state.targetQuaternion.copy(qFront);
+            } else {
+                state.targetQuaternion.copy(qBack);
+            }
+        }
+
+        function endInteraction() {
+            if (state.isDragging) {
+                state.isDragging = false;
+
+                // Check Trigger Threshold
+                if (state.shakeEnergy >= CONFIG.shakeThreshold) {
+                    triggerReveal();
+                } else {
+                    triggerStabilize();
+                }
+            }
+        }
+
+        function resetOracle() {
+            state.isRevealing = false;
+            state.shakeEnergy = 0;
+            // Reset position slightly
+            instructionText.innerHTML = 'Type your question, grab the ball, and <span class="text-cyan-400 font-bold">SHAKE IT</span> vigorously.';
+            instructionText.classList.remove('text-purple-400');
+            instructionText.classList.add('text-slate-300');
+            windowMaterial.map = createAnswerTexture("COSMIC ORACLE");
+            windowMaterial.map.needsUpdate = true;
+        }
+
+        function triggerReveal() {
+            // Get Answer
+            const answer = analyzeQuestion(questionInput.value);
+            windowMaterial.map = createAnswerTexture(answer);
+            windowMaterial.map.needsUpdate = true;
+
+            // Set State
+            state.isRevealing = true;
+            
+            // Set Target Rotation (Upright, back facing camera)
+            // Reset to 0,PI,0 faces the Window (Z-) towards Camera (Z+)
+            const euler = new THREE.Euler(0, Math.PI, 0); 
+            state.targetQuaternion.setFromEuler(euler);
+
+            // Visual Feedback
+            instructionText.innerText = "THE ORACLE HAS SPOKEN. CLICK TO RESET.";
+            instructionText.classList.remove('text-slate-300');
+            instructionText.classList.add('text-purple-400');
+            if (navigator.vibrate) navigator.vibrate(200);
+        }
+
+        // --- Event Listeners ---
+        canvas.addEventListener('mousedown', (e) => startInteraction(e.offsetX, e.offsetY));
+        canvas.addEventListener('mousemove', (e) => moveInteraction(e.offsetX, e.offsetY));
+        canvas.addEventListener('mouseup', endInteraction);
+        canvas.addEventListener('mouseleave', endInteraction);
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startInteraction(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            moveInteraction(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
+        canvas.addEventListener('touchend', endInteraction);
+
+        function toRadians(angle) {
+            return angle * (Math.PI / 180);
+        }
+
+        // --- Animation Loop ---
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now();
+            stars.rotation.z += 0.0002;
+
+            // Energy Decay (Physics simulation)
+            // Updated to prevent decay during auto-spin
+            if (!state.isDragging && !state.isRevealing && !state.isAutoSpinning) {
+                state.shakeEnergy *= 0.92; // Decay over time
+            } else if (state.isDragging) {
+                 state.shakeEnergy *= 0.98; // Slower decay while dragging to allow pauses
+            }
+            if (state.shakeEnergy < 1) state.shakeEnergy = 0;
+
+            // Update UI Meter
+            energyBar.style.width = `${Math.min(state.shakeEnergy, 100)}%`;
+            
+            // Color shift based on energy
+            if (state.shakeEnergy > CONFIG.shakeThreshold) {
+                energyBar.style.background = `linear-gradient(90deg, #a855f7, #ec4899)`; // Purple/Pink when ready
+                energyBar.style.boxShadow = `0 0 15px #ec4899`;
+            } else {
+                energyBar.style.background = `linear-gradient(90deg, #3b82f6, #06b6d4, #a855f7)`;
+                energyBar.style.boxShadow = `0 0 10px #06b6d4`;
+            }
+
+            // State Logic
+            if (state.isRevealing) {
+                // Smoothly snap to answer
+                ballGroup.quaternion.slerp(state.targetQuaternion, 0.05);
+                
+                // Float animation
+                ballGroup.position.y = Math.sin(time * 0.001) * 0.2;
+                ballGroup.position.x = 0;
+                ballGroup.position.z = 0;
+
+            } else if (state.isAutoSpinning) {
+                // NEW: Chaotic Auto Spin Animation
+                ballGroup.rotation.x += 0.4;
+                ballGroup.rotation.y += 0.6;
+                ballGroup.rotation.z += 0.3;
+                
+                // Strong Jitter
+                ballGroup.position.x = (Math.random() - 0.5) * 0.4;
+                ballGroup.position.y = (Math.random() - 0.5) * 0.4;
+                ballGroup.position.z = (Math.random() - 0.5) * 0.4;
+
+            } else if (state.isStabilizing) {
+                 // Stabilize snap
+                 ballGroup.quaternion.slerp(state.targetQuaternion, 0.1);
+                 
+                 // Stop stabilizing if close enough
+                 if (ballGroup.quaternion.angleTo(state.targetQuaternion) < 0.005) {
+                     state.isStabilizing = false;
+                 }
+                 
+                 // Gentle float animation, but keep centered
+                 ballGroup.position.y = Math.sin(time * 0.001) * 0.2;
+                 ballGroup.position.x *= 0.9;
+                 ballGroup.position.z *= 0.9;
+
+            } else {
+                // Idle / Dragging
+                
+                // Add some "vibration" if energy is high
+                if (state.shakeEnergy > 10) {
+                    const intensity = state.shakeEnergy * 0.001;
+                    ballGroup.position.x = (Math.random() - 0.5) * intensity;
+                    ballGroup.position.y = (Math.random() - 0.5) * intensity;
+                    ballGroup.position.z = (Math.random() - 0.5) * intensity;
+                } else {
+                    ballGroup.position.y = Math.sin(time * 0.001) * 0.2;
+                }
+
+                // If not dragging and not stabilizing, slowly rotate
+                if(!state.isDragging) {
+                    ballGroup.rotation.y += 0.001;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('load', () => {
+            const loader = document.getElementById('loader');
+            setTimeout(() => {
+                loader.style.opacity = '0';
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                    animate();
+                }, 500);
+            }, 1000);
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
